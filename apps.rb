@@ -4,6 +4,48 @@ require "sinatra"
 require "sinatra/reloader"
 require "csv"
 
+class Memo
+  FILE = "memo_data.csv"
+
+  attr_reader :data, :title, :content
+
+  def initialize(id = 0)
+    @data = CSV.read(FILE)
+    @title = @data[id][1]
+    @content = @data[id][2]
+  end
+
+  def all_data
+    data.select { |record| !record.empty? }
+  end
+
+  def format_content
+    content.gsub(/<br>/, "\n")
+  end
+
+  def self.insert(id, title, content)
+    CSV.open(FILE, "a") do |data|
+      data << [id, title, content.gsub(/(\r\n|\r|\n)/, "<br>")]
+    end
+  end
+
+  def self.update(id, title, content)
+    data = CSV.read(FILE)
+    data[id] = [id, title, content.gsub(/(\r\n|\r|\n)/, "<br>")]
+    File.open(FILE, "w") do |file|
+      data.each { |record| file.puts(record.join(",")) }
+    end
+  end
+
+  def self.delete(id)
+    data = CSV.read(FILE)
+    data[id].clear
+    File.open(FILE, "w") do |file|
+      data.each { |record| file.puts(record.join(",")) }
+    end
+  end
+end
+
 enable :method_override
 
 before do
@@ -12,7 +54,8 @@ end
 
 ["/", "/memos"].each do |route|
   get route do
-    @datas = CSV.read("memo_data.csv").select { |data| !data.empty? }
+    memo = Memo.new
+    @data = memo.all_data
     erb :index
   end
 end
@@ -22,54 +65,42 @@ get "/memos/new" do
 end
 
 post "/memos/new" do
-  @id = CSV.read("memo_data.csv").length
-  @title = params[:title]
-  @content = params[:content]
+  memo = Memo.new
+  id = memo.data.length
+  title = params[:title]
+  content = params[:content]
 
-  CSV.open("memo_data.csv", "a") do |memo|
-    memo << [@id, @title, @content.gsub(/(\r\n|\r|\n)/, "<br>")]
-  end
-  redirect "/memos/#{@id}"
+  Memo.insert(id, title, content)
+  redirect "/memos/#{id}"
 end
 
 get "/memos/:id" do
-  data = CSV.read("memo_data.csv")
   @id = params[:id].to_i
-  @title = data[@id][1]
-  @content = data[@id][2]
+  memo = Memo.new(@id)
+  @title = memo.title
+  @content = memo.content
   erb :show
 end
 
 delete "/memos/:id" do
-  @id = params[:id].to_i
-  data = CSV.read("memo_data.csv")
-
-  data[@id].clear
-  File.open("memo_data.csv", "w") do |f|
-    data.each { |a| f.puts(a.join(",")) }
-  end
-
+  id = params[:id].to_i
+  Memo.delete(id)
   redirect "/memos"
 end
 
 get "/memos/:id/edit" do
-  data = CSV.read("memo_data.csv")
   @id = params[:id].to_i
-  @title = data[@id][1]
-  @content = data[@id][2].gsub(/<br>/, "\n")
+  memo = Memo.new(@id)
+  @title = memo.title
+  @content = memo.format_content
   erb :edit
 end
 
 patch "/memos/:id/edit" do
-  data = CSV.read("memo_data.csv")
-  @id = params[:id].to_i
-  @title = params[:title]
-  @content = params[:content]
+  id = params[:id].to_i
+  title = params[:title]
+  content = params[:content]
 
-  data[@id] = [@id, @title, @content.gsub(/(\r\n|\r|\n)/, "<br>")]
-  File.open("memo_data.csv", "w") do |f|
-    data.each { |a| f.puts(a.join(",")) }
-  end
-
-  redirect "/memos/#{@id}"
+  Memo.update(id, title, content)
+  redirect "/memos/#{id}"
 end
