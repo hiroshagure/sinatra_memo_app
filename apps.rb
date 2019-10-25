@@ -25,28 +25,33 @@ class Memo
 
   def self.insert(id, title, content)
     CSV.open(FILE, "a") do |data|
+      data.flock(File::LOCK_EX)
       data << [id, title, content.gsub(/(\r\n|\r|\n)/, "<br>")]
+      data.flock(File::LOCK_UN)
     end
   end
 
   def self.update(id, title, content)
     data = CSV.read(FILE)
     data[id] = [id, title, content.gsub(/(\r\n|\r|\n)/, "<br>")]
-    File.open(FILE, "w") do |file|
-      data.each { |record| file.puts(record.join(",")) }
-    end
+    write_file(data)
   end
 
   def self.delete(id)
     data = CSV.read(FILE)
     data[id].clear
-    File.open(FILE, "w") do |file|
-      data.each { |record| file.puts(record.join(",")) }
-    end
+    write_file(data)
   end
-end
 
-enable :method_override
+  private
+    def self.write_file(data)
+      File.open(FILE, "w") do |file|
+        file.flock(File::LOCK_EX)
+        data.each { |record| file.puts(record.join(",")) }
+        file.flock(File::LOCK_UN)
+      end
+    end
+end
 
 before do
   cache_control :no_chache
@@ -60,11 +65,7 @@ end
   end
 end
 
-get "/memos/new" do
-  erb :new
-end
-
-post "/memos/new" do
+post "/memos" do
   memo = Memo.new
   id = memo.data.length
   title = params[:title]
@@ -74,12 +75,25 @@ post "/memos/new" do
   redirect "/memos/#{id}"
 end
 
+get "/memos/new" do
+  erb :new
+end
+
 get "/memos/:id" do
   @id = params[:id].to_i
   memo = Memo.new(@id)
   @title = memo.title
   @content = memo.content
   erb :show
+end
+
+patch "/memos/:id" do
+  id = params[:id].to_i
+  title = params[:title]
+  content = params[:content]
+
+  Memo.update(id, title, content)
+  redirect "/memos/#{id}"
 end
 
 delete "/memos/:id" do
@@ -94,13 +108,4 @@ get "/memos/:id/edit" do
   @title = memo.title
   @content = memo.format_content
   erb :edit
-end
-
-patch "/memos/:id/edit" do
-  id = params[:id].to_i
-  title = params[:title]
-  content = params[:content]
-
-  Memo.update(id, title, content)
-  redirect "/memos/#{id}"
 end
