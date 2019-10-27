@@ -10,6 +10,7 @@ class Memo
 
   def initialize(id)
     result = @@connection.exec("SELECT * FROM memos WHERE id = #{id}")
+    @id = result[0]["id"]
     @title = result[0]["title"]
     @content = result[0]["content"]
   end
@@ -18,9 +19,9 @@ class Memo
     content.gsub(/\r\n/, "<br>")
   end
 
-  def self.all_data
-    result = @@connection.exec("SELECT * FROM memos ORDER BY id DESC")
-    result.values
+  def self.all
+    result = @@connection.exec("SELECT id FROM memos ORDER BY id DESC")
+    result.field_values("id").map { |id| Memo.new(id) }
   end
 
   def self.insert(title, content)
@@ -44,7 +45,7 @@ end
 
 ["/", "/memos"].each do |route|
   get route do
-    @data = Memo.all_data
+    @memos = Memo.all
     erb :index
   end
 end

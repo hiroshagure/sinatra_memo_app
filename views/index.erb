@@ -1,6 +1,6 @@
 <h2 class="my-3">メモ一覧</h2>
 <ul>
-<%@data.each do |data|%>
-  <li><a href="/memos/<%=data[0]%>"><%=data[1]%></a></li>
+<%@memos.each do |memo|%>
+  <li><a href="/memos/<%=memo.id%>"><%=memo.title%></a></li>
 <%end%>
 </ul>
