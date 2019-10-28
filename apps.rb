@@ -2,55 +2,41 @@
 
 require "sinatra"
 require "sinatra/reloader"
-require "csv"
+require "pg"
 
 class Memo
-  FILE = "memo_data.csv"
+  @@connection = PG.connect(dbname: "memoapp")
+  attr_reader :id, :title, :content
 
-  attr_reader :data, :title, :content
-
-  def initialize(id = 0)
-    @data = CSV.read(FILE)
-    @title = @data[id][1]
-    @content = @data[id][2]
-  end
-
-  def all_data
-    data.select { |record| !record.empty? }
+  def initialize(id)
+    result = @@connection.exec("SELECT * FROM memos WHERE id = #{id}")
+    @id = result[0]["id"]
+    @title = result[0]["title"]
+    @content = result[0]["content"]
   end
 
   def format_content
-    content.gsub(/<br>/, "\n")
+    content.gsub(/\r\n/, "<br>")
   end
 
-  def self.insert(id, title, content)
-    CSV.open(FILE, "a") do |data|
-      data.flock(File::LOCK_EX)
-      data << [id, title, content.gsub(/(\r\n|\r|\n)/, "<br>")]
-      data.flock(File::LOCK_UN)
-    end
+  def self.all
+    result = @@connection.exec("SELECT id FROM memos ORDER BY id DESC")
+    result.field_values("id").map { |id| Memo.new(id) }
+  end
+
+  def self.insert(title, content)
+    @@connection.exec("INSERT INTO memos (title, content) VALUES ('#{title}', '#{content}')")
+    result = @@connection.exec("SELECT id FROM memos WHERE id = (SELECT max(id) FROM memos)")
+    result[0]["id"]
   end
 
   def self.update(id, title, content)
-    data = CSV.read(FILE)
-    data[id] = [id, title, content.gsub(/(\r\n|\r|\n)/, "<br>")]
-    write_file(data)
+    @@connection.exec("UPDATE memos SET title = '#{title}', content = '#{content}' WHERE id = #{id}")
   end
 
   def self.delete(id)
-    data = CSV.read(FILE)
-    data[id].clear
-    write_file(data)
+    @@connection.exec("DELETE FROM memos WHERE id = #{id}")
   end
-
-  private
-    def self.write_file(data)
-      File.open(FILE, "w") do |file|
-        file.flock(File::LOCK_EX)
-        data.each { |record| file.puts(record.join(",")) }
-        file.flock(File::LOCK_UN)
-      end
-    end
 end
 
 before do
@@ -59,19 +45,16 @@ end
 
 ["/", "/memos"].each do |route|
   get route do
-    memo = Memo.new
-    @data = memo.all_data
+    @memos = Memo.all
     erb :index
   end
 end
 
 post "/memos" do
-  memo = Memo.new
-  id = memo.data.length
   title = params[:title]
   content = params[:content]
 
-  Memo.insert(id, title, content)
+  id = Memo.insert(title, content)
   redirect "/memos/#{id}"
 end
 
@@ -83,7 +66,7 @@ get "/memos/:id" do
   @id = params[:id].to_i
   memo = Memo.new(@id)
   @title = memo.title
-  @content = memo.content
+  @content = memo.format_content
   erb :show
 end
 
@@ -106,6 +89,6 @@ get "/memos/:id/edit" do
   @id = params[:id].to_i
   memo = Memo.new(@id)
   @title = memo.title
-  @content = memo.format_content
+  @content = memo.content
   erb :edit
 end
